@@ -1,9 +1,10 @@
+import asyncio
 import hashlib
 import hmac
 import json
 import os
 import sqlite3
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl
@@ -23,16 +24,6 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "tasks.db")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is required")
-
-app = FastAPI(title="Telegram Mini App Daily Planner API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN, "https://web.telegram.org"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @contextmanager
@@ -65,6 +56,31 @@ def init_db() -> None:
             """
         )
         conn.commit()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    scheduler_task = asyncio.create_task(scheduler_loop())
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Telegram Mini App Daily Planner API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN, "https://web.telegram.org"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def parse_init_data(init_data: str) -> Dict[str, str]:
@@ -153,11 +169,6 @@ def row_to_task(row: sqlite3.Row) -> TaskOut:
         notified_1h=bool(row["notified_1h"]),
         notified_deadline=bool(row["notified_deadline"]),
     )
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    init_db()
 
 
 @app.post("/tasks", response_model=TaskOut)
@@ -291,31 +302,17 @@ async def send_telegram_message(chat_id: int, text: str) -> None:
         await client.post(url, json={"chat_id": chat_id, "text": text})
 
 
-@app.on_event("startup")
-async def start_scheduler() -> None:
-    async def scheduler_loop() -> None:
-        while True:
-            await process_deadline_notifications()
-            await asyncio_sleep_minutes(1)
-
-    import asyncio
-
-    asyncio.create_task(scheduler_loop())
-
-
-async def asyncio_sleep_minutes(minutes: int) -> None:
-    import asyncio
-
-    await asyncio.sleep(minutes * 60)
+async def scheduler_loop() -> None:
+    while True:
+        await process_deadline_notifications()
+        await asyncio.sleep(60)
 
 
 async def process_deadline_notifications() -> None:
     now_ts = int(datetime.now(timezone.utc).timestamp())
 
     with db_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM tasks WHERE status = 'active'"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM tasks WHERE status = 'active'").fetchall()
 
         updates: List[Tuple[str, Tuple[Any, ...]]] = []
         messages: List[Tuple[int, str]] = []
@@ -342,21 +339,11 @@ async def process_deadline_notifications() -> None:
                 continue
 
             if 0 < diff <= 3600 and not row["notified_1h"]:
-                updates.append(
-                    (
-                        "UPDATE tasks SET notified_1h = 1 WHERE id = ?",
-                        (task_id,),
-                    )
-                )
+                updates.append(("UPDATE tasks SET notified_1h = 1 WHERE id = ?", (task_id,)))
                 messages.append((user_id, f"⌛ До дедлайна задачи '{title}' остался 1 час."))
 
             if 3600 < diff <= 86400 and not row["notified_24h"]:
-                updates.append(
-                    (
-                        "UPDATE tasks SET notified_24h = 1 WHERE id = ?",
-                        (task_id,),
-                    )
-                )
+                updates.append(("UPDATE tasks SET notified_24h = 1 WHERE id = ?", (task_id,)))
                 messages.append((user_id, f"📌 До дедлайна задачи '{title}' осталось 24 часа."))
 
         for q, p in updates:
@@ -368,3 +355,9 @@ async def process_deadline_notifications() -> None:
             await send_telegram_message(chat_id, text)
         except Exception:
             pass
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
