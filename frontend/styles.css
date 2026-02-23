@@ -1,0 +1,104 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #101217;
+  color: #e8ebf1;
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h1, h2 {
+  margin: 0 0 12px;
+}
+
+.card {
+  background: #181c24;
+  border: 1px solid #2a3140;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+input, textarea, button {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #343e52;
+  background: #111722;
+  color: #e8ebf1;
+  padding: 10px;
+}
+
+textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+button {
+  cursor: pointer;
+  background: #2d66d6;
+  border: none;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tab {
+  background: #202838;
+}
+
+.tab.active {
+  background: #3f7cff;
+}
+
+.task {
+  padding: 10px;
+  border: 1px solid #2f3849;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.meta {
+  font-size: 13px;
+  color: #aeb7c8;
+  margin-top: 6px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.row button {
+  flex: 1;
+}
+
+.delete {
+  background: #8c2f40;
+}
+
+.note {
+  color: #aeb7c8;
+}
